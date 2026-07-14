@@ -12,7 +12,7 @@ Routing is determined by **model name suffix** (default `-cloud`) or **`?source=
 ## Quick start
 
 ```bash
-pip install -r requirements/requirements-base.txt
+pip install -r requirements/requirements-dev.txt
 python -m uvicorn apis.main:app --host 0.0.0.0 --port 11435
 ```
 

@@ -14,7 +14,7 @@ Client -> :11435 -> OllamaProvider -> localhost:11434 (no auth)
 ## Quick start
 
 ```bash
-pip install -r requirements/requirements-base.txt
+pip install -r requirements/requirements-dev.txt
 python -m uvicorn apis.main:app --host 0.0.0.0 --port 11435
 ```
 

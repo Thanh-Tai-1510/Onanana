@@ -1,4 +1,4 @@
-# AI Warp Tool
+# Onanana (AI Warp Tool)
 
 Ollama-compatible proxy on `:11435` that routes requests to local Ollama or a cloud API.
 

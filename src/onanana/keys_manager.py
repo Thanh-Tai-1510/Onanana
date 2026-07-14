@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import random
 from pathlib import Path
@@ -9,6 +10,10 @@ logger = logging.getLogger(__name__)
 
 ROOT_DIR = Path(__file__).parents[2]
 sys.path.append(str(ROOT_DIR))
+
+LOCK_SEPARATOR = "||"
+SHORT_LOCK_DURATION = datetime.timedelta(hours=5)
+LONG_LOCK_DURATION = datetime.timedelta(days=7)
 
 class KeysManager:
     def __init__(self, file_path: str, cloud_base_url: str = "",
@@ -27,16 +32,42 @@ class KeysManager:
 
     def _load_locked_keys(self) -> set[str]:
         locked: set[str] = set()
-        for path in (self._short_lock_path, self._long_lock_path):
-            if path and path.exists():
-                keys = [
-                    line.strip()
-                    for line in path.read_text().splitlines()
-                    if line.strip() and not line.strip().startswith("#")
-                ]
-                if keys:
-                    logger.info("Loaded %d locked key(s) from %s", len(keys), path)
-                locked.update(keys)
+        for path, duration in (
+            (self._short_lock_path, SHORT_LOCK_DURATION),
+            (self._long_lock_path, LONG_LOCK_DURATION),
+        ):
+            if not path or not path.exists():
+                continue
+            now = datetime.datetime.now(datetime.timezone.utc)
+            valid_lines: list[str] = []
+            expired_count = 0
+            for line in path.read_text().splitlines():
+                raw = line.strip()
+                if not raw or raw.startswith("#"):
+                    valid_lines.append(raw)
+                    continue
+                if LOCK_SEPARATOR in raw:
+                    key, ts_str = raw.split(LOCK_SEPARATOR, 1)
+                    try:
+                        ts = datetime.datetime.fromisoformat(ts_str)
+                        if now - ts > duration:
+                            expired_count += 1
+                            continue
+                        locked.add(key)
+                        valid_lines.append(raw)
+                        continue
+                    except ValueError:
+                        pass
+                locked.add(raw)
+                valid_lines.append(raw)
+            if expired_count:
+                content = "\n".join(valid_lines)
+                if content:
+                    content += "\n"
+                path.write_text(content)
+                logger.info("Cleaned %d expired key(s) from %s", expired_count, path)
+            if locked:
+                logger.info("Loaded %d locked key(s) from %s", len(locked), path)
         return locked
 
     def load_keys(self) -> list[str]:
@@ -103,6 +134,7 @@ class KeysManager:
         return healthy
 
     async def get_next_healthy_key(self) -> str | None:
+        self.cleanup_expired_locks()
         async with self._lock:
             if self._healthy_keys:
                 key = self._healthy_keys[self._index % len(self._healthy_keys)]
@@ -117,6 +149,21 @@ class KeysManager:
                 self._index = (self._index + 1) % len(self._healthy_keys)
                 return key
             return None
+
+    def cleanup_expired_locks(self) -> int:
+        old_count = len(self._locked_keys)
+        self._locked_keys = self._load_locked_keys()
+        removed = old_count - len(self._locked_keys)
+        if removed:
+            healthy_set = set(self._healthy_keys)
+            for k in self._keys:
+                if k not in self._locked_keys and k not in healthy_set:
+                    self._healthy_keys.append(k)
+                    healthy_set.add(k)
+            self._healthy_keys = [k for k in self._healthy_keys if k not in self._locked_keys]
+            logger.info("Unlocked %d expired key(s), %d still locked, %d healthy",
+                        removed, len(self._locked_keys), len(self._healthy_keys))
+        return removed
 
     async def close(self):
         await self._client.aclose()

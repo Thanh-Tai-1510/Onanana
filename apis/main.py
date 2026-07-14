@@ -17,11 +17,10 @@ from src.onanana.providers.ollama import OllamaProvider
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-CLEANUP_INTERVAL = 300  # 30 minutes
+CLEANUP_INTERVAL = 600  # 10 minutes
 
 km = KeysManager(settings.keys_file_path, cloud_base_url=settings.cloud_ollama_base_url,
-                 short_lock_path=settings.short_lock_file_path,
-                 long_lock_path=settings.long_lock_file_path)
+                 lock_path=settings.lock_file_path)
 km.load_keys()
 client = httpx.AsyncClient(timeout=300.0)
 provider = OllamaProvider(
@@ -30,8 +29,7 @@ provider = OllamaProvider(
     keys_manager=km,
     client=client,
     cloud_api_key=settings.cloud_api_key,
-    short_lock_path=settings.short_lock_file_path,
-    long_lock_path=settings.long_lock_file_path,
+    lock_path=settings.lock_file_path,
 )
 
 

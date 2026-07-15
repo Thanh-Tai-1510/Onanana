@@ -3,8 +3,8 @@
 Ollama-compatible proxy on `:11435` that routes requests to local Ollama or a cloud API.
 
 ```
-Client -> :11435 -> OllamaProvider -> localhost:11434 (no auth)
-                                   -> cloud URL (Bearer token)
+Client -> :11435 (/api/* or /v1/*) -> OllamaProvider -> localhost:11434 (no auth)
+                                                    -> cloud URL (Bearer token)
 ```
 
 Routing is determined by **model name suffix** (default `-cloud`) or **`?source=` query param**.

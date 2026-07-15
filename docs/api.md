@@ -31,6 +31,34 @@ The suffix is configurable via `WARP_CLOUD_MODEL_SUFFIX` (default `-cloud`).
 
 ## Endpoints
 
+### Native Ollama (`/api/*`)
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/version` | `?source=local\|cloud` |
+| `GET` | `/api/tags` | List models |
+| `GET` | `/api/ps` | Running models |
+| `POST` | `/api/chat` | Chat |
+| `POST` | `/api/generate` | Completion (`messages`→`prompt`/`system` conversion) |
+| `POST` | `/api/embed`, `/api/embeddings` | Embeddings |
+| `POST` | `/api/create`, `/api/pull`, `/api/push`, `/api/show`, `/api/copy` | Model management |
+| `DELETE` | `/api/delete` | Delete model |
+| `*` | `/api/{rest}` | Catch-all proxy for other native paths |
+
+### OpenAI-compatible (`/v1/*`)
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/v1/chat/completions` | OpenAI chat |
+| `POST` | `/v1/completions` | OpenAI completions |
+| `POST` | `/v1/embeddings` | OpenAI embeddings |
+| `POST` | `/v1/responses` | OpenAI responses |
+| `GET` | `/v1/models` | List models (`?source=`) |
+| `GET` | `/v1/models/{model}` | Show model (`-cloud` suffix routing applies) |
+| `*` | `/v1/{rest}` | Catch-all proxy for other OpenAI-compatible paths |
+
+Streaming: `/api/*` → `application/x-ndjson`; `/v1/*` → `text/event-stream`.
+
 ### `GET /api/version`
 
 ```python
@@ -82,7 +110,27 @@ r = requests.post("http://localhost:11435/api/generate", json={
 })
 ```
 
-Streaming responses pass through transparently (`GET` endpoints do not support streaming).
+### `POST /v1/chat/completions`
+
+```python
+r = requests.post("http://localhost:11435/v1/chat/completions", json={
+    "model": "gemma4:31b-cloud",
+    "messages": [{"role": "user", "content": "hi"}],
+    "stream": False,
+})
+```
+
+OpenAI SDK:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:11435/v1", api_key="ollama")
+r = client.chat.completions.create(
+    model="gemma4:26b",
+    messages=[{"role": "user", "content": "hi"}],
+)
+```
 
 ### `DELETE /api/delete`
 

@@ -24,7 +24,6 @@ ENDPOINTS = {
     "generate": {"method": "POST", "model": GenerateRequest},
     "chat": {"method": "POST", "model": ChatRequest},
     "embeddings": {"method": "POST", "model": EmbedRequest},
-    "embed": {"method": "POST", "model": EmbedRequest},
     "create": {"method": "POST", "model": CreateRequest},
     "pull": {"method": "POST", "model": PullRequest},
     "push": {"method": "POST", "model": PushRequest},
@@ -32,13 +31,6 @@ ENDPOINTS = {
     "copy": {"method": "POST", "model": CopyRequest},
     "delete": {"method": "DELETE", "model": DeleteRequest},
 }
-
-GET_PREFIXES = (
-    "api/version",
-    "api/tags",
-    "api/ps",
-    "v1/models",
-)
 
 
 class OllamaRequestBuilder:
@@ -53,23 +45,17 @@ class OllamaRequestBuilder:
         *,
         model_override: str | None = None,
         headers: dict[str, str] | None = None,
-        method: str | None = None,
     ) -> httpx.Request:
         api_path = path.lstrip("/")
         url = f"{base_url.rstrip('/')}/{api_path}"
-        payload = dict(body) if body else None
+        payload = dict(body) if body else {}
 
-        if payload is not None and model_override is not None:
+        if model_override is not None:
             payload["model"] = model_override
 
-        resolved_method = (method or self._method_for_path(api_path)).upper()
-        logger.debug("Building %s %s", resolved_method, url)
-        kwargs: dict[str, Any] = {"headers": headers}
-        if resolved_method != "GET" and payload is not None:
-            kwargs["json"] = payload
-        elif resolved_method == "GET" and payload:
-            kwargs["params"] = payload
-        return self._client.build_request(resolved_method, url, **kwargs)
+        logger.debug("Building %s %s", self._method_for_path(api_path), url)
+        method = self._method_for_path(api_path)
+        return self._client.build_request(method, url, json=payload, headers=headers)
 
     async def send_request(
         self,
@@ -80,28 +66,16 @@ class OllamaRequestBuilder:
         model_override: str | None = None,
         headers: dict[str, str] | None = None,
         stream: bool = True,
-        method: str | None = None,
     ) -> httpx.Response:
         req = self.build_request(
-            path,
-            base_url,
-            body,
-            model_override=model_override,
-            headers=headers,
-            method=method,
+            path, base_url, body, model_override=model_override, headers=headers
         )
         return await self._client.send(req, stream=stream)
 
     @staticmethod
     def _method_for_path(api_path: str) -> str:
-        normalized = api_path.lstrip("/")
-        for prefix in GET_PREFIXES:
-            if normalized == prefix or normalized.startswith(prefix + "/"):
-                return "GET"
         for name, info in ENDPOINTS.items():
-            if normalized.endswith(f"/api/{name}") or normalized == f"api/{name}":
-                return info["method"]
-            if normalized.endswith(f"/v1/{name}") or normalized == f"v1/{name}":
+            if api_path.endswith(f"/api/{name}") or api_path == f"api/{name}":
                 return info["method"]
         return "POST"
 

@@ -128,60 +128,6 @@ class TestStreamingEndpoint:
         assert resp.headers["content-type"] == "application/x-ndjson"
 
 
-class TestOpenAICompatEndpoints:
-    def test_v1_chat_completions_local(self, test_app):
-        resp = test_app.post("/v1/chat/completions", json={
-            "model": "gemma4:26b",
-            "messages": [{"role": "user", "content": "hi"}],
-            "stream": False,
-        })
-        assert resp.status_code == 200
-
-    def test_v1_chat_completions_cloud_suffix(self, test_app):
-        resp = test_app.post("/v1/chat/completions", json={
-            "model": "gemma4:31b-cloud",
-            "messages": [{"role": "user", "content": "hi"}],
-            "stream": False,
-        })
-        assert resp.status_code == 200
-
-    def test_v1_completions(self, test_app):
-        resp = test_app.post("/v1/completions", json={
-            "model": "gemma4:26b",
-            "prompt": "hello",
-            "stream": False,
-        })
-        assert resp.status_code == 200
-
-    def test_v1_embeddings(self, test_app):
-        resp = test_app.post("/v1/embeddings", json={
-            "model": "nomic-embed-text",
-            "input": "hello",
-        })
-        assert resp.status_code == 200
-
-    def test_v1_models(self, test_app):
-        resp = test_app.get("/v1/models")
-        assert resp.status_code == 200
-
-    def test_v1_model_by_name(self, test_app):
-        resp = test_app.get("/v1/models/gemma4:26b")
-        assert resp.status_code == 200
-
-    def test_v1_chat_streaming_sse(self, test_app):
-        resp = test_app.post("/v1/chat/completions", json={
-            "model": "gemma4:26b",
-            "messages": [{"role": "user", "content": "hi"}],
-            "stream": True,
-        })
-        assert resp.status_code == 200
-        assert resp.headers["content-type"].startswith("text/event-stream")
-
-    def test_api_ps(self, test_app):
-        resp = test_app.get("/api/ps")
-        assert resp.status_code == 200
-
-
 class TestDeleteEndpoint:
     def test_delete_local(self, test_app):
         body = json.dumps({"model": "gemma4:26b"})

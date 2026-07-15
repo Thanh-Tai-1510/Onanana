@@ -59,13 +59,14 @@ class OllamaProvider:
     async def _send_with_retry(
         self, path: str, base: str, body: dict[str, Any] | None, *,
         model_override: str | None = None, headers: dict[str, str] | None = None,
-        stream: bool = True, token: str = "",
+        stream: bool = True, token: str = "", method: str | None = None,
     ) -> httpx.Response:
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 return await self._req_builder.send_request(
                     path, base, body,
                     model_override=model_override, headers=headers, stream=stream,
+                    method=method,
                 )
             except httpx.TimeoutException:
                 logger.warning("Timeout attempt %d/%d for key %s...", attempt, MAX_RETRIES, token[:16])
@@ -143,7 +144,7 @@ class OllamaProvider:
             logger.debug("Proxying cloud GET %s -> %s", path, url)
             resp = await self._send_with_retry(
                 path, base, None,
-                headers=headers, stream=False, token=token,
+                headers=headers, stream=False, token=token, method="GET",
             )
             if resp.status_code == 429 and token:
                 self._append_to_lock(self._lock_path, token)

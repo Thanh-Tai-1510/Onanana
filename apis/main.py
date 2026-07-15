@@ -60,18 +60,51 @@ async def no_key_handler(request: Request, exc: RuntimeError):
     return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
-@app.get("/api/version")
-async def version(source: str = Query("local", pattern="^(local|cloud)$")):
+def _stream_media_type(prefix: str) -> str:
+    return "text/event-stream" if prefix == "v1" else "application/x-ndjson"
+
+
+async def _proxy_json_get(path: str, source: str):
     km.cleanup_expired_locks()
-    resp = await provider.proxy_get("api/version", source=source)
+    resp = await provider.proxy_get(path, source=source)
     await resp.aread()
     return JSONResponse(content=resp.json(), status_code=resp.status_code)
 
 
+@app.get("/api/version")
+async def version(source: str = Query("local", pattern="^(local|cloud)$")):
+    return await _proxy_json_get("api/version", source)
+
+
 @app.get("/api/tags")
 async def tags(source: str = Query("local", pattern="^(local|cloud)$")):
+    return await _proxy_json_get("api/tags", source)
+
+
+@app.get("/api/ps")
+async def ps(source: str = Query("local", pattern="^(local|cloud)$")):
+    return await _proxy_json_get("api/ps", source)
+
+
+@app.get("/v1/models")
+async def v1_models(source: str = Query("local", pattern="^(local|cloud)$")):
+    return await _proxy_json_get("v1/models", source)
+
+
+@app.get("/v1/models/{model_name:path}")
+async def v1_model(model_name: str, source: str = Query(None, pattern="^(local|cloud)$")):
     km.cleanup_expired_locks()
-    resp = await provider.proxy_get("api/tags", source=source)
+    use_cloud = source == "cloud" if source else OllamaProvider.is_cloud_model(model_name)
+    if source == "local":
+        forwarded = model_name
+        resolved = "local"
+    elif use_cloud:
+        forwarded = OllamaProvider.strip_cloud_suffix(model_name)
+        resolved = "cloud"
+    else:
+        forwarded = model_name
+        resolved = "local"
+    resp = await provider.proxy_get(f"v1/models/{forwarded}", source=resolved)
     await resp.aread()
     return JSONResponse(content=resp.json(), status_code=resp.status_code)
 
@@ -79,12 +112,33 @@ async def tags(source: str = Query("local", pattern="^(local|cloud)$")):
 @app.post("/api/{rest:path}")
 @app.get("/api/{rest:path}")
 @app.delete("/api/{rest:path}")
-async def proxy(
+async def proxy_api(
     request: Request,
     rest: str,
     source: str = Query(None, pattern="^(local|cloud)$"),
     prompt: str = Query(None),
     system: str = Query(None),
+):
+    return await _proxy(request, f"api/{rest}", source=source, native_generate=True)
+
+
+@app.post("/v1/{rest:path}")
+@app.get("/v1/{rest:path}")
+@app.delete("/v1/{rest:path}")
+async def proxy_v1(
+    request: Request,
+    rest: str,
+    source: str = Query(None, pattern="^(local|cloud)$"),
+):
+    return await _proxy(request, f"v1/{rest}", source=source, native_generate=False)
+
+
+async def _proxy(
+    request: Request,
+    path: str,
+    *,
+    source: str | None,
+    native_generate: bool,
 ):
     km.cleanup_expired_locks()
 
@@ -93,7 +147,7 @@ async def proxy(
     except Exception:
         body = {}
 
-    if "messages" in body and "generate" in rest:
+    if native_generate and "messages" in body and "generate" in path:
         for msg in body["messages"]:
             if msg.get("role") == "system":
                 body["system"] = msg["content"]
@@ -104,16 +158,17 @@ async def proxy(
 
     method = request.method
     is_stream = body.get("stream", False) if method == "POST" else False
+    prefix = path.split("/", 1)[0]
 
     if method == "GET":
-        resp = await provider.proxy_get(f"api/{rest}", source=source or "local")
+        resp = await provider.proxy_get(path, source=source or "local")
     elif method == "DELETE":
-        resp = await provider.proxy_delete(f"api/{rest}", body, source=source)
+        resp = await provider.proxy_delete(path, body, source=source)
     else:
-        resp = await provider.proxy_request(f"api/{rest}", body, stream=is_stream, source=source)
+        resp = await provider.proxy_request(path, body, stream=is_stream, source=source)
 
     if is_stream:
-        return StreamingResponse(resp.aiter_bytes(), media_type="application/x-ndjson")
+        return StreamingResponse(resp.aiter_bytes(), media_type=_stream_media_type(prefix))
     await resp.aread()
     return JSONResponse(content=resp.json(), status_code=resp.status_code)
 
